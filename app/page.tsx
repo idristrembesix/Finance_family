@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 
 const CATEGORIES = ['Groceries', 'Food', 'Transportasi', 'Pendidikan', 'Kesehatan', 'Lainnya'];
-const METHODS = ['Cash', 'Qris', 'BCA Debit', 'Kasbon'];
+const METHODS = ['Cash', 'Qris', 'Bank', 'Kasbon'];
 const FAMILY_MEMBERS = ['Idris', 'Abi', 'Umi' , 'Hanifah'];
 
 export default function App() {

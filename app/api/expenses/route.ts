@@ -2,7 +2,6 @@
     import { GoogleSpreadsheet } from 'google-spreadsheet';
     import { JWT } from 'google-auth-library';
 
-    // BARIS INI SANGAT KRITIKAL: Memaksa Next.js mengambil data real-time, menonaktifkan cache
     export const dynamic = 'force-dynamic'; 
 
     async function getGoogleSheet() {
@@ -21,13 +20,13 @@
         const body = await req.json();
         const sheet = await getGoogleSheet();
         
+        // Menghapus 'Berat/Kuantitas' agar sesuai dengan 6 kolom di Sheets Anda
         await sheet.addRow({
-        Tanggal: body.tanggal,
-        Pembayar: body.pembayar,
+        'Tanggal': body.tanggal,
+        'Pembayar': body.pembayar,
         'Nama Barang/Pengeluaran': body.namaBarang,
-        Kategori: body.kategori,
-        'Berat/Kuantitas': body.berat || '-',
-        Harga: Number(body.harga),
+        'Kategori': body.kategori,
+        'Harga': Number(body.harga),
         'Metode Pembayaran': body.metodePembayaran
         });
 

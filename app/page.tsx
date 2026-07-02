@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 
 const CATEGORIES = ['Groceries', 'Food', 'Transportasi', 'Pendidikan', 'Kesehatan', 'Lainnya'];
 const METHODS = ['Cash', 'Qris', 'BCA Debit', 'Kasbon'];
-const FAMILY_MEMBERS = ['Idris', 'Abi', 'Umi'];
+const FAMILY_MEMBERS = ['Idris', 'Abi', 'Umi' , 'Hanifah'];
 
 export default function App() {
   const [isAuth, setIsAuth] = useState(false);

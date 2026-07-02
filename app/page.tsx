@@ -1,15 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-// --- DATA PILIHAN (Sesuaikan dengan kebutuhan) ---
-const CATEGORIES = ['Groceries', 'Tagihan', 'Transportasi', 'Kesehatan', 'Hiburan', 'Pendidikan', 'Kuliner', 'Lainnya'];
-const METHODS = ['Cash', 'Qris', 'Bank', 'Kasbon'];
-const FAMILY_MEMBERS = ['Idris', 'Abi', 'Umi', 'Hanifah'];
+const CATEGORIES = ['Groceries', 'Food', 'Transportasi', 'Pendidikan', 'Kesehatan', 'Lainnya'];
+const METHODS = ['Cash', 'Qris', 'BCA Debit', 'Kasbon'];
+const FAMILY_MEMBERS = ['Idris', 'Abi', 'Umi'];
 
 export default function App() {
   const [isAuth, setIsAuth] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'history'>('history');
+  const [selectedProfile, setSelectedProfile] = useState('Idris'); // State untuk identitas login
+  
+  const [activeTab, setActiveTab] = useState<'add' | 'history'>('add');
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -32,8 +33,17 @@ export default function App() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Cek sesi saat aplikasi dibuka
   useEffect(() => {
-    if (localStorage.getItem('family_logged_in') === 'true') setIsAuth(true);
+    const loggedIn = localStorage.getItem('family_logged_in');
+    const savedProfile = localStorage.getItem('family_profile');
+    
+    if (loggedIn === 'true' && savedProfile) {
+      setIsAuth(true);
+      setSelectedProfile(savedProfile);
+      setFilterMember(savedProfile); // Langsung filter ke nama sendiri
+      setFormData(prev => ({ ...prev, pembayar: savedProfile }));
+    }
   }, []);
 
   useEffect(() => {
@@ -43,7 +53,8 @@ export default function App() {
   const fetchHistory = async () => {
     setIsLoadingHistory(true);
     try {
-      const res = await fetch('/api/expenses');
+      // Menambahkan timestamp agar browser tidak memakai cache
+      const res = await fetch(`/api/expenses?t=${new Date().getTime()}`);
       const data = await res.json();
       setHistoryData(data);
     } catch (e) {
@@ -57,9 +68,21 @@ export default function App() {
     if (pinInput === process.env.NEXT_PUBLIC_FAMILY_PIN) {
       setIsAuth(true);
       localStorage.setItem('family_logged_in', 'true');
+      localStorage.setItem('family_profile', selectedProfile);
+      
+      setFilterMember(selectedProfile);
+      setFormData(prev => ({ ...prev, pembayar: selectedProfile }));
+      setActiveTab('history');
     } else {
       alert('PIN Salah!');
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('family_logged_in');
+    localStorage.removeItem('family_profile');
+    setIsAuth(false);
+    setPinInput('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,22 +92,26 @@ export default function App() {
     }
     setIsSubmitting(true);
     try {
-      await fetch('/api/expenses', {
+      const res = await fetch('/api/expenses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      setFormData({ ...formData, namaBarang: '', harga: '', berat: '', kategori: '', metodePembayaran: '' });
-      setActiveTab('history'); 
+      
+      if (res.ok) {
+        setFormData({ ...formData, namaBarang: '', harga: '', berat: '', kategori: '', metodePembayaran: '' });
+        setActiveTab('history'); 
+      } else {
+        alert('Terjadi kendala saat menyimpan ke Spreadsheet.');
+      }
     } catch (error) {
-      alert('Gagal menyimpan data');
+      alert('Gagal menghubungi server.');
     }
     setIsSubmitting(false);
   };
 
-  // FUNGSI BARU: Menangani penghapusan data saat tombol tempat sampah diklik
   const handleDelete = async (item: any) => {
-    const konfirmasi = window.confirm(`Apakah Anda yakin ingin menghapus catatan "${item.namaBarang}"?`);
+    const konfirmasi = window.confirm(`Hapus catatan "${item.namaBarang}"?`);
     if (!konfirmasi) return;
 
     try {
@@ -99,14 +126,12 @@ export default function App() {
       });
 
       if (res.ok) {
-        alert('Data berhasil dihapus dari Google Sheets!');
-        fetchHistory(); // Memuat ulang data riwayat terbaru
+        fetchHistory(); 
       } else {
-        const err = await res.json();
-        alert(`Gagal: ${err.error}`);
+        alert(`Gagal menghapus data.`);
       }
     } catch (e) {
-      alert('Terjadi kesalahan sistem saat menghapus data.');
+      alert('Terjadi kesalahan sistem.');
     }
   };
 
@@ -118,17 +143,13 @@ export default function App() {
   const formatRupiah = (val: any) => {
     if (!val) return '0';
     let strVal = String(val);
-    if (strVal.endsWith('.00')) {
-      strVal = strVal.slice(0, -3);
-    }
+    if (strVal.endsWith('.00')) strVal = strVal.slice(0, -3);
     const cleanNumber = strVal.replace(/[^0-9]/g, '');
     return Number(cleanNumber).toLocaleString('id-ID');
   };
 
-  // Logika Filter
   const filteredHistory = historyData.filter(item => {
     if (filterMember !== 'All' && item.pembayar !== filterMember) return false;
-    
     if (item.tanggal) {
       if (item.tanggal.startsWith(filterMonth)) return true;
       const d = new Date(item.tanggal);
@@ -149,22 +170,41 @@ export default function App() {
     return sum + (Number(cleanPrice) || 0);
   }, 0);
 
+  // --- HALAMAN LOGIN BARU DENGAN PROFIL ---
   if (!isAuth) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 max-w-sm w-full text-center">
           <h1 className="text-2xl font-bold text-slate-800 mb-2">FinanceFamily</h1>
-          <p className="text-slate-500 mb-6 text-sm">Masukkan PIN keluarga untuk masuk</p>
-          <form onSubmit={handleLogin}>
-            <input 
-              type="password" 
-              value={pinInput} 
-              onChange={(e) => setPinInput(e.target.value)}
-              className="w-full text-center text-2xl tracking-[0.5em] py-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-              placeholder="••••"
-              maxLength={6}
-            />
-            <button type="submit" className="w-full bg-slate-900 text-white font-semibold py-3 rounded-xl hover:bg-slate-800">Masuk</button>
+          <p className="text-slate-500 mb-6 text-sm">Pilih profil dan masukkan PIN</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block text-left">Saya Adalah:</label>
+              <select 
+                value={selectedProfile}
+                onChange={(e) => setSelectedProfile(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-800 font-bold py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                {FAMILY_MEMBERS.map(member => (
+                  <option key={member} value={member}>{member}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block text-left">PIN Keluarga:</label>
+              <input 
+                type="password" 
+                value={pinInput} 
+                onChange={(e) => setPinInput(e.target.value)}
+                className="w-full text-center text-2xl tracking-[0.5em] py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                placeholder="••••"
+                maxLength={6}
+              />
+            </div>
+            
+            <button type="submit" className="w-full bg-slate-900 text-white font-semibold py-3.5 rounded-xl hover:bg-slate-800 mt-2 shadow-lg">Masuk Aplikasi</button>
           </form>
         </div>
       </div>
@@ -230,14 +270,9 @@ export default function App() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Dibayar Oleh</label>
-              <div className="flex bg-slate-100 rounded-xl p-1">
-                {FAMILY_MEMBERS.map(member => (
-                  <button key={member} type="button" onClick={() => setFormData({...formData, pembayar: member})}
-                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${formData.pembayar === member ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>
-                    {member}
-                  </button>
-                ))}
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Dibayar Oleh (Otomatis)</label>
+              <div className="w-full bg-slate-100 text-slate-500 font-bold py-3 px-4 rounded-xl">
+                {formData.pembayar}
               </div>
             </div>
 
@@ -261,13 +296,16 @@ export default function App() {
             />
           </div>
 
-          <div className="bg-slate-900 text-white rounded-3xl p-6 mb-6 shadow-xl shadow-slate-900/10">
-            <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Total Pengeluaran</p>
-            <h2 className="text-3xl font-black mt-1 tracking-tight">
+          <div className="bg-slate-900 text-white rounded-3xl p-6 mb-4 shadow-xl shadow-slate-900/10">
+            <div className="flex justify-between items-start">
+              <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Total Pengeluaran</p>
+              <button onClick={handleLogout} className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 hover:text-white">Ganti Profil</button>
+            </div>
+            <h2 className="text-3xl font-black mt-2 tracking-tight">
               IDR {formatRupiah(totalPengeluaran)}
             </h2>
             <p className="text-[11px] text-slate-500 mt-3 border-t border-slate-800 pt-2.5">
-              Terhitung otomatis berdasarkan filter nama & bulan di bawah
+              Filter aktif: <span className="font-bold text-slate-300">{filterMember}</span>
             </p>
           </div>
 
@@ -303,15 +341,11 @@ export default function App() {
                       <p className="text-slate-600 text-base font-medium mt-0.5">{item.namaBarang}</p>
                     </div>
                     
-                    {/* TANGGAL DAN TOMBOL HAPUS */}
                     <div className="text-right flex flex-col items-end justify-between min-h-[50px]">
                       <span className="text-slate-800 font-bold text-sm">{item.tanggal}</span>
-                      
-                      {/* Tombol Hapus Tempat Sampah */}
                       <button 
                         onClick={() => handleDelete(item)}
                         className="text-red-500 hover:text-red-700 text-sm p-1 mt-1 font-bold transition-all"
-                        title="Hapus Pengeluaran"
                       >
                         🗑 Hapus
                       </button>
@@ -335,7 +369,6 @@ export default function App() {
               {filteredHistory.length === 0 && (
                 <div className="text-center mt-10">
                   <p className="text-slate-400 font-medium">Tidak ada pengeluaran.</p>
-                  <p className="text-slate-300 text-sm mt-1">Coba pilih bulan atau anggota lain.</p>
                 </div>
               )}
             </div>

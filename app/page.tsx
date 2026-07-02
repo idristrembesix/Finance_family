@@ -1,166 +1,361 @@
-import Image from "next/image";
-import Link from "next/link";
+'use client';
+import { useState, useEffect } from 'react';
 
-export default function Home() {
+// --- DATA PILIHAN (Sesuaikan dengan kebutuhan) ---
+const CATEGORIES = ['Groceries', 'Tagihan', 'Transportasi', 'Kesehatan', 'Hiburan', 'Pendidikan', 'Kuliner', 'Lainnya'];
+const METHODS = ['Cash', 'Qris', 'Bank', 'Kasbon'];
+const FAMILY_MEMBERS = ['Idris', 'Abi', 'Umi', 'Hanifah'];
+
+export default function App() {
+  const [isAuth, setIsAuth] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [activeTab, setActiveTab] = useState<'add' | 'history'>('history');
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Filter State
+  const [filterMember, setFilterMember] = useState('All');
+  const [filterMonth, setFilterMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  // Form State
+  const [formData, setFormData] = useState({
+    tanggal: new Date().toISOString().split('T')[0],
+    pembayar: 'Idris',
+    namaBarang: '',
+    kategori: '',
+    berat: '',
+    harga: '',
+    metodePembayaran: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (localStorage.getItem('family_logged_in') === 'true') setIsAuth(true);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'history') fetchHistory();
+  }, [activeTab]);
+
+  const fetchHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const res = await fetch('/api/expenses');
+      const data = await res.json();
+      setHistoryData(data);
+    } catch (e) {
+      console.error(e);
+    }
+    setIsLoadingHistory(false);
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinInput === process.env.NEXT_PUBLIC_FAMILY_PIN) {
+      setIsAuth(true);
+      localStorage.setItem('family_logged_in', 'true');
+    } else {
+      alert('PIN Salah!');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.kategori || !formData.metodePembayaran) {
+      alert('Pilih kategori dan metode pembayaran!'); return;
+    }
+    setIsSubmitting(true);
+    try {
+      await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      setFormData({ ...formData, namaBarang: '', harga: '', berat: '', kategori: '', metodePembayaran: '' });
+      setActiveTab('history'); 
+    } catch (error) {
+      alert('Gagal menyimpan data');
+    }
+    setIsSubmitting(false);
+  };
+
+  // FUNGSI BARU: Menangani penghapusan data saat tombol tempat sampah diklik
+  const handleDelete = async (item: any) => {
+    const konfirmasi = window.confirm(`Apakah Anda yakin ingin menghapus catatan "${item.namaBarang}"?`);
+    if (!konfirmasi) return;
+
+    try {
+      const res = await fetch('/api/expenses', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tanggal: item.tanggal,
+          namaBarang: item.namaBarang,
+          harga: item.harga,
+        }),
+      });
+
+      if (res.ok) {
+        alert('Data berhasil dihapus dari Google Sheets!');
+        fetchHistory(); // Memuat ulang data riwayat terbaru
+      } else {
+        const err = await res.json();
+        alert(`Gagal: ${err.error}`);
+      }
+    } catch (e) {
+      alert('Terjadi kesalahan sistem saat menghapus data.');
+    }
+  };
+
+  const handleHargaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/[^0-9]/g, ''); 
+    setFormData({ ...formData, harga: rawValue });
+  };
+
+  const formatRupiah = (val: any) => {
+    if (!val) return '0';
+    let strVal = String(val);
+    if (strVal.endsWith('.00')) {
+      strVal = strVal.slice(0, -3);
+    }
+    const cleanNumber = strVal.replace(/[^0-9]/g, '');
+    return Number(cleanNumber).toLocaleString('id-ID');
+  };
+
+  // Logika Filter
+  const filteredHistory = historyData.filter(item => {
+    if (filterMember !== 'All' && item.pembayar !== filterMember) return false;
+    
+    if (item.tanggal) {
+      if (item.tanggal.startsWith(filterMonth)) return true;
+      const d = new Date(item.tanggal);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        if (`${yyyy}-${mm}` === filterMonth) return true;
+      }
+      return false; 
+    }
+    return true;
+  });
+
+  const totalPengeluaran = filteredHistory.reduce((sum, item) => {
+    let strPrice = String(item.harga || '0');
+    if (strPrice.endsWith('.00')) strPrice = strPrice.slice(0, -3);
+    const cleanPrice = strPrice.replace(/[^0-9]/g, '');
+    return sum + (Number(cleanPrice) || 0);
+  }, 0);
+
+  if (!isAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 max-w-sm w-full text-center">
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">FinanceFamily</h1>
+          <p className="text-slate-500 mb-6 text-sm">Masukkan PIN keluarga untuk masuk</p>
+          <form onSubmit={handleLogin}>
+            <input 
+              type="password" 
+              value={pinInput} 
+              onChange={(e) => setPinInput(e.target.value)}
+              className="w-full text-center text-2xl tracking-[0.5em] py-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+              placeholder="••••"
+              maxLength={6}
+            />
+            <button type="submit" className="w-full bg-slate-900 text-white font-semibold py-3 rounded-xl hover:bg-slate-800">Masuk</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-slate-50 pb-20 font-sans">
       
-      {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-10 py-6">
-        <h1 className="text-xl font-bold">FinanceFamily</h1>
+      {activeTab === 'add' && (
+        <div className="max-w-md mx-auto bg-white min-h-screen p-5">
+           <div className="flex justify-between items-center mb-6">
+            <h1 className="text-xl font-bold text-slate-800">Catat Pengeluaran</h1>
+            <input 
+              type="date" 
+              value={formData.tanggal} 
+              onChange={(e) => setFormData({...formData, tanggal: e.target.value})} 
+              className="bg-slate-100 text-sm py-1.5 px-3 rounded-lg text-slate-600 outline-none cursor-pointer"
+            />
+          </div>
 
-        <div className="flex gap-8 text-sm text-zinc-300">
-          <Link href="/" className="hover:text-indigo-500">
-            Product
-          </Link>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center">
+              <span className="text-slate-400 font-bold text-xl mr-3">Rp</span>
+              <input 
+                type="text" 
+                inputMode="numeric"
+                required 
+                placeholder="0"
+                value={formData.harga ? Number(formData.harga).toLocaleString('id-ID') : ''} 
+                onChange={handleHargaChange}
+                className="bg-transparent text-4xl font-bold text-slate-800 w-full outline-none"
+              />
+            </div>
 
-          <Link href="/" className="hover:text-indigo-500">
-            Features
-          </Link>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Item / Barang</label>
+              <input type="text" required placeholder="Apa yang kamu beli?" value={formData.namaBarang} onChange={(e) => setFormData({...formData, namaBarang: e.target.value})} className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-blue-500 bg-transparent text-slate-800"/>
+            </div>
 
-          <Link href="/" className="hover:text-indigo-500">
-            Pricing
-          </Link>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Kategori</label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map(cat => (
+                  <button key={cat} type="button" onClick={() => setFormData({...formData, kategori: cat})}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${formData.kategori === cat ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <Link href="/" className="hover:text-indigo-500">
-            Resources
-          </Link>
-        </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Metode Pembayaran</label>
+              <div className="flex flex-wrap gap-2">
+                {METHODS.map(met => (
+                  <button key={met} type="button" onClick={() => setFormData({...formData, metodePembayaran: met})}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${formData.metodePembayaran === met ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {met}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div className="flex gap-4">
-          <Link
-            href="/auth/Login"
-            className="text-sm text-zinc-300 hover:text-indigo-500"
-          >
-            Login
-          </Link>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Dibayar Oleh</label>
+              <div className="flex bg-slate-100 rounded-xl p-1">
+                {FAMILY_MEMBERS.map(member => (
+                  <button key={member} type="button" onClick={() => setFormData({...formData, pembayar: member})}
+                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${formData.pembayar === member ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>
+                    {member}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <Link
-            href="/"
-            className="bg-indigo-600 px-5 py-2 rounded-full text-sm hover:bg-indigo-500"
-          >
-            Sign Up
-          </Link>
-        </div>
-      </nav>
-
-      {/* HERO */}
-      <section className="px-10 pt-20 pb-28 grid md:grid-cols-2 gap-10 items-center">
-        <div>
-          <h1 className="text-5xl font-bold leading-tight">
-            Manage Your <br />
-            <span className="text-indigo-500">Family Finance</span> <br />
-            Smarter
-          </h1>
-
-          <p className="mt-6 text-zinc-400 max-w-md">
-            Track income, expenses and savings with a modern dashboard.
-            Built for families who want better financial planning.
-          </p>
-
-          <div className="mt-8 flex gap-4">
-            <button className="bg-indigo-600 px-6 py-3 rounded-full hover:bg-indigo-500">
-              Get Started
+            <button type="submit" disabled={isSubmitting} className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl mt-4 shadow-lg disabled:opacity-50">
+              {isSubmitting ? 'Menyimpan...' : 'Simpan Data'}
             </button>
+          </form>
+        </div>
+      )}
 
-            <button className="border border-zinc-700 px-6 py-3 rounded-full hover:bg-zinc-800">
-              Learn More
+      {activeTab === 'history' && (
+        <div className="max-w-md mx-auto min-h-screen p-5">
+          
+          <div className="flex justify-between items-center mb-5">
+            <h1 className="text-xl font-bold text-slate-800">Riwayat</h1>
+            <input 
+              type="month"
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="bg-slate-100 text-sm py-1.5 px-3 rounded-lg text-slate-600 outline-none cursor-pointer"
+            />
+          </div>
+
+          <div className="bg-slate-900 text-white rounded-3xl p-6 mb-6 shadow-xl shadow-slate-900/10">
+            <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Total Pengeluaran</p>
+            <h2 className="text-3xl font-black mt-1 tracking-tight">
+              IDR {formatRupiah(totalPengeluaran)}
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-3 border-t border-slate-800 pt-2.5">
+              Terhitung otomatis berdasarkan filter nama & bulan di bawah
+            </p>
+          </div>
+
+          <div className="flex bg-slate-100 rounded-xl p-1 mb-6">
+            <button 
+              onClick={() => setFilterMember('All')}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${filterMember === 'All' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              All
             </button>
+            {FAMILY_MEMBERS.map(member => (
+              <button 
+                key={member}
+                onClick={() => setFilterMember(member)}
+                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${filterMember === member ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {member}
+              </button>
+            ))}
           </div>
+          
+          {isLoadingHistory ? (
+            <p className="text-center text-slate-400 mt-10 font-medium">Memuat data...</p>
+          ) : (
+            <div className="space-y-3">
+              {filteredHistory.map((item, index) => (
+                <div key={index} className="bg-white p-4 rounded-2xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)] border border-slate-100">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-extrabold text-slate-900 text-xl tracking-tight">
+                        IDR {formatRupiah(item.harga)}
+                      </h3>
+                      <p className="text-slate-600 text-base font-medium mt-0.5">{item.namaBarang}</p>
+                    </div>
+                    
+                    {/* TANGGAL DAN TOMBOL HAPUS */}
+                    <div className="text-right flex flex-col items-end justify-between min-h-[50px]">
+                      <span className="text-slate-800 font-bold text-sm">{item.tanggal}</span>
+                      
+                      {/* Tombol Hapus Tempat Sampah */}
+                      <button 
+                        onClick={() => handleDelete(item)}
+                        className="text-red-500 hover:text-red-700 text-sm p-1 mt-1 font-bold transition-all"
+                        title="Hapus Pengeluaran"
+                      >
+                        🗑 Hapus
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 mt-4">
+                    <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg text-xs font-bold">
+                      {item.kategori}
+                    </span>
+                    <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-lg text-xs font-bold">
+                      {item.metode}
+                    </span>
+                    <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold">
+                      {item.pembayar}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              
+              {filteredHistory.length === 0 && (
+                <div className="text-center mt-10">
+                  <p className="text-slate-400 font-medium">Tidak ada pengeluaran.</p>
+                  <p className="text-slate-300 text-sm mt-1">Coba pilih bulan atau anggota lain.</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      )}
 
-        {/* HERO IMAGE */}
-        <div className="relative">
-          <div className="absolute blur-3xl bg-indigo-600 w-72 h-72 opacity-30 rounded-full"></div>
-
-          <Image
-            src="/dashboard.png"
-            alt="finance dashboard"
-            width={600}
-            height={400}
-            className="relative rounded-2xl shadow-2xl"
-          />
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 pb-safe">
+        <div className="max-w-md mx-auto flex">
+          <button onClick={() => setActiveTab('add')} className={`flex-1 py-4 text-sm font-bold flex flex-col items-center justify-center gap-1 ${activeTab === 'add' ? 'text-slate-900' : 'text-slate-400'}`}>
+            <span className="text-2xl leading-none">⊕</span>
+            <span className="text-[10px] uppercase tracking-wider">Add</span>
+          </button>
+          <button onClick={() => setActiveTab('history')} className={`flex-1 py-4 text-sm font-bold flex flex-col items-center justify-center gap-1 ${activeTab === 'history' ? 'text-slate-900' : 'text-slate-400'}`}>
+            <span className="text-xl leading-none">◷</span>
+            <span className="text-[10px] uppercase tracking-wider">History</span>
+          </button>
         </div>
-      </section>
+      </div>
 
-      {/* FEATURES */}
-      <section className="px-10 py-24 bg-zinc-900">
-        <h2 className="text-center text-3xl font-bold mb-16">
-          Powerful Finance Tools
-        </h2>
-
-        <div className="grid md:grid-cols-4 gap-8">
-          <div className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition">
-            <h3 className="text-lg font-semibold">Expense Tracking</h3>
-            <p className="text-sm text-zinc-400 mt-2">
-              Record all your daily expenses easily.
-            </p>
-          </div>
-
-          <div className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition">
-            <h3 className="text-lg font-semibold">Income Management</h3>
-            <p className="text-sm text-zinc-400 mt-2">
-              Track salary and all income sources.
-            </p>
-          </div>
-
-          <div className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition">
-            <h3 className="text-lg font-semibold">Analytics Dashboard</h3>
-            <p className="text-sm text-zinc-400 mt-2">
-              Visualize your finance with charts.
-            </p>
-          </div>
-
-          <div className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition">
-            <h3 className="text-lg font-semibold">Family Sharing</h3>
-            <p className="text-sm text-zinc-400 mt-2">
-              Manage finance together with family.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* DASHBOARD PREVIEW */}
-      <section className="px-10 py-28 text-center">
-        <h2 className="text-3xl font-bold mb-6">
-          Smart Financial Dashboard
-        </h2>
-
-        <p className="text-zinc-400 max-w-xl mx-auto mb-12">
-          See your money flow, spending habits and saving progress
-          in one beautiful dashboard.
-        </p>
-
-        <div className="flex justify-center">
-          <Image
-            src="/dashboard.png"
-            alt="finance dashboard"
-            width={900}
-            height={500}
-            className="rounded-2xl shadow-2xl"
-          />
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="px-10 py-24 bg-indigo-600 text-center">
-        <h2 className="text-3xl font-bold">
-          Start Managing Your Family Finance today
-        </h2>
-
-        <p className="mt-4 text-indigo-100">
-          Simple, powerful and secure financial management.
-        </p>
-
-        <button className="mt-8 bg-white text-indigo-600 px-8 py-3 rounded-full font-medium hover:bg-zinc-200">
-          Create Free Account
-        </button>
-      </section>
-
-      {/* FOOTER */}
-      <footer className="px-10 py-10 text-center text-zinc-500 text-sm">
-        © {new Date().getFullYear()} FinanceFamily. All rights reserved.
-      </footer>
     </div>
   );
 }

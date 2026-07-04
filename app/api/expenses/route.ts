@@ -20,14 +20,14 @@
         const body = await req.json();
         const sheet = await getGoogleSheet();
         
-        // Menghapus 'Berat/Kuantitas' agar sesuai dengan 6 kolom di Sheets Anda
         await sheet.addRow({
         'Tanggal': body.tanggal,
         'Pembayar': body.pembayar,
         'Nama Barang/Pengeluaran': body.namaBarang,
         'Kategori': body.kategori,
         'Harga': Number(body.harga),
-        'Metode Pembayaran': body.metodePembayaran
+        'Metode Pembayaran': body.metodePembayaran,
+        'Tipe': body.tipe // Menyimpan 'Pemasukan' atau 'Pengeluaran'
         });
 
         return NextResponse.json({ message: 'Data berhasil dicatat!' }, { status: 200 });
@@ -48,6 +48,7 @@
         kategori: row.get('Kategori'),
         harga: row.get('Harga'),
         metode: row.get('Metode Pembayaran'),
+        tipe: row.get('Tipe') || 'Pengeluaran', // Default ke pengeluaran jika data lama kosong
         })).reverse();
 
         return NextResponse.json(data, { status: 200 });
@@ -59,14 +60,15 @@
     export async function DELETE(req: Request) {
     try {
         const body = await req.json();
-        const { tanggal, namaBarang, harga } = body;
+        const { tanggal, namaBarang, harga, tipe } = body;
         const sheet = await getGoogleSheet();
         const rows = await sheet.getRows();
 
         const rowToDelete = rows.find(row => 
         row.get('Tanggal') === tanggal && 
         row.get('Nama Barang/Pengeluaran') === namaBarang && 
-        String(row.get('Harga')).replace(/[^0-9]/g, '') === String(harga).replace(/[^0-9]/g, '')
+        String(row.get('Harga')).replace(/[^0-9]/g, '') === String(harga).replace(/[^0-9]/g, '') &&
+        (row.get('Tipe') || 'Pengeluaran') === tipe
         );
 
         if (rowToDelete) {

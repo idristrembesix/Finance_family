@@ -23,7 +23,7 @@ export default function App() {
   });
 
   // Form State
-  const [formTipe, setFormTipe] = useState<'Pengeluaran' | 'Pemasukan'>('Pengeluaran');
+  const [formTipe, setFormTipe] = useState<'Pemasukan' | 'Pengeluaran'>('Pemasukan');
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split('T')[0],
     pembayar: 'Idris',
@@ -207,13 +207,13 @@ export default function App() {
             <input type="date" value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} className="bg-slate-100 text-sm py-1.5 px-3 rounded-lg text-slate-600 outline-none cursor-pointer"/>
           </div>
 
-          {/* TOGGLE PENGELUARAN VS PEMASUKAN */}
+          {/* REVISI: POSISI BUTTON DITUKAR (PEMASUKAN KIRI, PENGELUARAN KANAN) */}
           <div className="flex bg-slate-100 rounded-2xl p-1 mb-6">
-            <button type="button" onClick={() => { setFormTipe('Pengeluaran'); setFormData({...formData, kategori: ''}); }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${formTipe === 'Pengeluaran' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500'}`}>
-              💸 Pengeluaran
-            </button>
             <button type="button" onClick={() => { setFormTipe('Pemasukan'); setFormData({...formData, kategori: ''}); }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${formTipe === 'Pemasukan' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500'}`}>
               💰 Pemasukan
+            </button>
+            <button type="button" onClick={() => { setFormTipe('Pengeluaran'); setFormData({...formData, kategori: ''}); }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${formTipe === 'Pengeluaran' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500'}`}>
+              💸 Pengeluaran
             </button>
           </div>
 
@@ -275,11 +275,12 @@ export default function App() {
             <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-slate-100 text-sm py-1.5 px-3 rounded-lg text-slate-600 outline-none cursor-pointer"/>
           </div>
 
-          {/* DASHBOARD PINTAR: PEMASUKAN, PENGELUARAN & SISA SALDO */}
           <div className="bg-slate-900 text-white rounded-3xl p-6 mb-4 shadow-xl shadow-slate-900/10 space-y-4">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Sisa Dompet ({filterMember})</p>
+                <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">
+                  {filterMember === 'All' ? 'Sisa Kas Keluarga' : `Sisa Dompet (${filterMember})`}
+                </p>
                 <h2 className={`text-3xl font-black mt-1 tracking-tight ${sisaSaldo < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                   IDR {formatRupiah(sisaSaldo)}
                 </h2>
@@ -308,6 +309,13 @@ export default function App() {
           
           {isLoadingHistory ? (
             <p className="text-center text-slate-400 mt-10 font-medium">Memuat data...</p>
+          ) : filterMember === 'All' ? (
+            /* REVISI: SEMBUNYIKAN DAFTAR TRANSAKSI SAAT FILTER 'ALL' AKTIF */
+            <div className="text-center mt-10 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+              <span className="text-4xl mb-3 block">📊</span>
+              <p className="text-slate-800 font-bold mb-1">Mode Ringkasan Keluarga</p>
+              <p className="text-slate-500 text-sm">Pilih profil individu di atas (Idris, Abi, Umi, Hanifah) untuk melihat rincian history transaksi mereka.</p>
+            </div>
           ) : (
             <div className="space-y-3">
               {filteredHistory.map((item, index) => (

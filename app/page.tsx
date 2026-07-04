@@ -144,9 +144,8 @@ export default function App() {
     return Number(cleanNumber).toLocaleString('id-ID');
   };
 
-  // Filter Data Sesuai Nama & Bulan
-  const filteredHistory = historyData.filter(item => {
-    if (filterMember !== 'All' && item.pembayar !== filterMember) return false;
+  // 1. Filter Data Hanya Berdasarkan Bulan (Untuk keperluan hitung "All")
+  const monthFilteredHistory = historyData.filter(item => {
     if (item.tanggal) {
       if (item.tanggal.startsWith(filterMonth)) return true;
       const d = new Date(item.tanggal);
@@ -160,7 +159,13 @@ export default function App() {
     return true;
   });
 
-  // Hitung Nilai Finansial Otomatis
+  // 2. Filter Lanjutan Berdasarkan Nama Anggota (Untuk Detail History)
+  const filteredHistory = monthFilteredHistory.filter(item => {
+    if (filterMember !== 'All' && item.pembayar !== filterMember) return false;
+    return true;
+  });
+
+  // 3. Hitung Nilai Finansial Otomatis untuk Kartu Hitam Atas
   const totalPemasukan = filteredHistory.filter(i => i.tipe === 'Pemasukan').reduce((sum, item) => {
     const price = String(item.harga || '0').replace(/[^0-9]/g, '');
     return sum + (Number(price) || 0);
@@ -172,6 +177,19 @@ export default function App() {
   }, 0);
 
   const sisaSaldo = totalPemasukan - totalPengeluaran;
+
+  // 4. Hitung Ringkasan Per Individu (Khusus saat tab "All" aktif)
+  const ringkasanPerOrang = FAMILY_MEMBERS.map(member => {
+    const dataOrang = monthFilteredHistory.filter(item => item.pembayar === member);
+    const masuk = dataOrang.filter(i => i.tipe === 'Pemasukan').reduce((sum, item) => sum + (Number(String(item.harga || '0').replace(/[^0-9]/g, '')) || 0), 0);
+    const keluar = dataOrang.filter(i => i.tipe === 'Pengeluaran' || !i.tipe).reduce((sum, item) => sum + (Number(String(item.harga || '0').replace(/[^0-9]/g, '')) || 0), 0);
+    return {
+      nama: member,
+      pemasukan: masuk,
+      pengeluaran: keluar,
+      saldo: masuk - keluar
+    };
+  });
 
   if (!isAuth) {
     return (
@@ -207,7 +225,6 @@ export default function App() {
             <input type="date" value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} className="bg-slate-100 text-sm py-1.5 px-3 rounded-lg text-slate-600 outline-none cursor-pointer"/>
           </div>
 
-          {/* REVISI: POSISI BUTTON DITUKAR (PEMASUKAN KIRI, PENGELUARAN KANAN) */}
           <div className="flex bg-slate-100 rounded-2xl p-1 mb-6">
             <button type="button" onClick={() => { setFormTipe('Pemasukan'); setFormData({...formData, kategori: ''}); }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${formTipe === 'Pemasukan' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500'}`}>
               💰 Pemasukan
@@ -227,7 +244,7 @@ export default function App() {
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">
                 {formTipe === 'Pemasukan' ? 'Sumber Pemasukan (Keterangan)' : 'Item / Nama Barang'}
               </label>
-              <input type="text" mercantile-attribute="true" required placeholder={formTipe === 'Pemasukan' ? 'Contoh: Uang Saku Hanifah, Gaji, dll' : 'Apa yang kamu beli?'} value={formData.namaBarang} onChange={(e) => setFormData({...formData, namaBarang: e.target.value})} className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-blue-500 bg-transparent text-slate-800"/>
+              <input type="text" required placeholder={formTipe === 'Pemasukan' ? 'Contoh: Uang Saku Hanifah, Gaji, dll' : 'Apa yang kamu beli?'} value={formData.namaBarang} onChange={(e) => setFormData({...formData, namaBarang: e.target.value})} className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-blue-500 bg-transparent text-slate-800"/>
             </div>
 
             <div>
@@ -310,13 +327,32 @@ export default function App() {
           {isLoadingHistory ? (
             <p className="text-center text-slate-400 mt-10 font-medium">Memuat data...</p>
           ) : filterMember === 'All' ? (
-            /* REVISI: SEMBUNYIKAN DAFTAR TRANSAKSI SAAT FILTER 'ALL' AKTIF */
-            <div className="text-center mt-10 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-              <span className="text-4xl mb-3 block">📊</span>
-              <p className="text-slate-800 font-bold mb-1">Mode Ringkasan Keluarga</p>
-              <p className="text-slate-500 text-sm">Pilih profil individu di atas (Idris, Abi, Umi, Hanifah) untuk melihat rincian history transaksi mereka.</p>
+            /* TAMPILAN DASHBOARD PER ORANG JIKA 'ALL' DIPILIH */
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-1 mb-1">Ringkasan Per Individu</h3>
+              {ringkasanPerOrang.map((ringkasan) => (
+                <div key={ringkasan.nama} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-3">
+                    <span className="font-extrabold text-slate-800 text-lg">{ringkasan.nama}</span>
+                    <span className={`font-black text-lg tracking-tight ${ringkasan.saldo < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      IDR {formatRupiah(ringkasan.saldo)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <div>
+                      <span className="text-slate-400 font-semibold block text-xs uppercase tracking-wider">Pemasukan</span>
+                      <span className="text-emerald-600 font-bold mt-0.5 block">+{formatRupiah(ringkasan.pemasukan)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-400 font-semibold block text-xs uppercase tracking-wider">Pengeluaran</span>
+                      <span className="text-slate-700 font-bold mt-0.5 block">-{formatRupiah(ringkasan.pengeluaran)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
+            /* TAMPILAN DETAIL TRANSAKSI JIKA PROFIL INDIVIDU DIPILIH */
             <div className="space-y-3">
               {filteredHistory.map((item, index) => (
                 <div key={index} className={`bg-white p-4 rounded-2xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)] border ${item.tipe === 'Pemasukan' ? 'border-emerald-100 bg-emerald-50/10' : 'border-slate-100'}`}>

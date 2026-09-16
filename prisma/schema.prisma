@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Wajib ada untuk migrasi di Supabase
+}
+
+// Tabel untuk Anggota Keluarga (Umi, Abi, Idris, Hanifah)
+model User {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  pin          String        // Menyimpan PIN akses (sementara string biasa)
+  transactions Transaction[] // Relasi: Satu user bisa punya banyak transaksi
+  createdAt    DateTime      @default(now())
+}
+
+// Tabel untuk Catatan Keuangan
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Int      // Menggunakan Int agar presisi untuk mata uang Rupiah
+  type        String   // Nilainya: "INCOME" (pemasukan) atau "EXPENSE" (pengeluaran)
+  category    String   // Contoh: "Groceries", "Transportasi", "Pendidikan"
+  description String?  // Opsional (catatan tambahan)
+  date        DateTime @default(now())
+  
+  // Penghubung (Relasi) ke siapa yang melakukan transaksi
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
